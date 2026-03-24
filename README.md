@@ -9,29 +9,58 @@ A lightweight, native macOS menu bar application to monitor Disk and Network usa
 - **Settings**: Simple "Launch at Login" option.
 
 ## Requirements
-- macOS 13 (Ventura) or later
-- Xcode Command Line Tools (for building from source)
+- Mac 电脑，系统版本 macOS 13 (Ventura) 或更高
 
 ## Installation
 
-### Build from Source
+这是一个需要从源码编译的项目，按照下面的步骤一步步来就行。
+
+### 1. 下载代码
+
+**方式 A：用 Git Clone（推荐）**
+
+打开「终端」app（在 启动台 → 其他 → 终端，或者用 Spotlight 搜索 "Terminal"），粘贴以下命令并按回车：
 
 ```bash
-# Clone the repository
 git clone https://github.com/Humsweet/MyStats.git
+```
+
+下载完成后进入项目目录：
+
+```bash
 cd MyStats
+```
 
-# Install Xcode Command Line Tools (if not already installed)
+**方式 B：下载 ZIP**
+
+1. 点击本页面绿色的 **Code** 按钮 → **Download ZIP**
+2. 解压下载的 ZIP 文件
+3. 打开「终端」，输入 `cd `（注意 cd 后面有个空格），然后把解压出来的文件夹拖进终端窗口，按回车
+
+### 2. 安装编译工具
+
+在终端中运行：
+
+```bash
 xcode-select --install
+```
 
-# Build the app
+会弹出一个系统对话框，点击「安装」，等待完成即可。如果提示"已经安装"则跳过此步。
+
+### 3. 编译并生成 App
+
+```bash
 chmod +x scripts/build_app.sh
 ./scripts/build_app.sh
 ```
 
-After building, move `MyStats.app` to `/Applications` and double-click to run.
+等待输出 `Done. App is at .../MyStats.app` 表示编译成功。
 
-> **Note**: Moving to `/Applications` is recommended for "Launch at Login" to work correctly due to macOS security restrictions.
+### 4. 安装
+
+将项目目录下生成的 `MyStats.app` 拖到 `/Applications`（访达侧栏的「应用程序」文件夹），双击打开即可。
+
+> **Note**: 必须放到「应用程序」文件夹中，否则「开机自启」功能会因 macOS 安全限制而无法正常工作。
 
 ## Usage
 The status bar item displays a compact two-row view:
