@@ -1,3 +1,5 @@
+[中文](README.zh-CN.md)
+
 # MyStats
 
 A lightweight, native macOS menu bar application to monitor Disk and Network usage.
@@ -14,24 +16,39 @@ A lightweight, native macOS menu bar application to monitor Disk and Network usa
 
 ## Installation
 
-### Build from Source
+### Option A: Git Clone
 
 ```bash
-# Clone the repository
 git clone https://github.com/Humsweet/MyStats.git
 cd MyStats
+```
 
-# Install Xcode Command Line Tools (if not already installed)
+### Option B: Download ZIP
+
+Click the green **Code** button on this page → **Download ZIP**, then unzip and `cd` into the folder.
+
+### Build
+
+If you don't have Xcode Command Line Tools installed yet:
+
+```bash
 xcode-select --install
+```
 
-# Build the app
+Then build the app:
+
+```bash
 chmod +x scripts/build_app.sh
 ./scripts/build_app.sh
 ```
 
-After building, move `MyStats.app` to `/Applications` and double-click to run.
+Once you see `Done. App is at .../MyStats.app`, the build is complete.
 
-> **Note**: Moving to `/Applications` is recommended for "Launch at Login" to work correctly due to macOS security restrictions.
+### Run
+
+Move `MyStats.app` to `/Applications` and double-click to launch.
+
+> **Note**: Moving to `/Applications` is required for "Launch at Login" to work correctly due to macOS security restrictions.
 
 ## Usage
 The status bar item displays a compact two-row view:
