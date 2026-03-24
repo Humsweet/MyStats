@@ -10,11 +10,28 @@ A lightweight, native macOS menu bar application to monitor Disk and Network usa
 
 ## Requirements
 - macOS 13 (Ventura) or later
+- Xcode Command Line Tools (for building from source)
 
 ## Installation
-1. Move `MyStats.app` to your `/Applications` folder.
-   > **Note**: Moving to `/Applications` is recommended for "Launch at Login" to work correctly due to macOS security restrictions.
-2. Double-click to run.
+
+### Build from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/Humsweet/MyStats.git
+cd MyStats
+
+# Install Xcode Command Line Tools (if not already installed)
+xcode-select --install
+
+# Build the app
+chmod +x scripts/build_app.sh
+./scripts/build_app.sh
+```
+
+After building, move `MyStats.app` to `/Applications` and double-click to run.
+
+> **Note**: Moving to `/Applications` is recommended for "Launch at Login" to work correctly due to macOS security restrictions.
 
 ## Usage
 The status bar item displays a compact two-row view:
