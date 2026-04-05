@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(diskutil info:*)",
+      "Bash(diskutil apfs:*)",
+      "Bash(swift build:*)"
+    ]
+  }
+}
