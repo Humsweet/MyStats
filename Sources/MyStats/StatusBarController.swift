@@ -155,7 +155,9 @@ class StatusBarController: NSObject {
         var dUsed = "U: —"
 
         if let disk = diskUsage {
-            dFree = "F: " + formatDiskGB(Double(disk.free))
+            let useFinderStyle = UserDefaults.standard.string(forKey: "diskFreeMode") == "finder"
+            let freeBytes = useFinderStyle ? disk.freeIncludingPurgeable : disk.free
+            dFree = "F: " + formatDiskGB(Double(freeBytes))
             dUsed = "U: " + formatDiskGB(Double(disk.used))
         }
 
@@ -185,7 +187,7 @@ class StatusBarController: NSObject {
     @objc private func openSettings() {
         if settingsWindowController == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 300, height: 250),
+                contentRect: NSRect(x: 0, y: 0, width: 320, height: 280),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered, defer: false)
             window.center()
@@ -205,48 +207,107 @@ class StatusBarController: NSObject {
 
 struct SettingsView: View {
     @AppStorage("launchAtLogin") var launchAtLogin = false
+    @AppStorage("diskFreeMode") var diskFreeMode: String = "real"
     @State private var statusMessage: String = ""
-    
+    @State private var diskUsage: DiskUsage? = nil
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("MyStats Settings")
                 .font(.headline)
-            
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            Divider()
+
+            // --- Disk Free Space Mode ---
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Free Space Display")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    diskModeRow(
+                        mode: "real",
+                        label: "Real Free (df style)",
+                        subtitle: "Truly unoccupied blocks",
+                        value: diskUsage.map { formatGB(Double($0.free)) } ?? "—"
+                    )
+                    diskModeRow(
+                        mode: "finder",
+                        label: "Finder Style",
+                        subtitle: "Includes purgeable (local snapshots, caches)",
+                        value: diskUsage.map { formatGB(Double($0.freeIncludingPurgeable)) } ?? "—"
+                    )
+                }
+            }
+
+            Divider()
+
+            // --- Launch at Login ---
             Toggle("Launch at Login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { newValue in
                     updateLoginItem(enabled: newValue)
                 }
-                .padding()
-            
+
             if !statusMessage.isEmpty {
                 Text(statusMessage)
                     .font(.caption2)
                     .foregroundColor(.red)
             }
-            
-            Text("Simple and lightweight monitor.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
+
+            Spacer()
+
             Button("Close") {
                 NSApp.keyWindow?.close()
             }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding()
-        .frame(width: 300, height: 250)
+        .frame(width: 320, height: 280)
         .onAppear {
             checkLoginItemStatus()
+            diskUsage = DiskMonitor.shared.getDiskUsage()
+        }
+        .onReceive(timer) { _ in
+            diskUsage = DiskMonitor.shared.getDiskUsage()
         }
     }
-    
+
+    @ViewBuilder
+    private func diskModeRow(mode: String, label: String, subtitle: String, value: String) -> some View {
+        Button(action: { diskFreeMode = mode }) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: diskFreeMode == mode ? "largecircle.fill.circle" : "circle")
+                    .foregroundColor(diskFreeMode == mode ? .accentColor : .secondary)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label)
+                        .font(.body)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Text(value)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(diskFreeMode == mode ? .primary : .secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func formatGB(_ bytes: Double) -> String {
+        String(format: "%.1f GB", bytes / (1024 * 1024 * 1024))
+    }
+
     private func checkLoginItemStatus() {
-        if SMAppService.mainApp.status == .enabled {
-            launchAtLogin = true
-        } else {
-            launchAtLogin = false
-        }
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
-    
+
     private func updateLoginItem(enabled: Bool) {
         do {
             if enabled {
@@ -259,8 +320,6 @@ struct SettingsView: View {
             statusMessage = ""
         } catch {
             statusMessage = "Error: \(error.localizedDescription)"
-            // Revert toggle if failed
-            // launchAtLogin = !enabled // This might cause loop, better leave it
         }
     }
 }
