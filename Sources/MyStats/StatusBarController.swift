@@ -1,6 +1,5 @@
 import AppKit
 import ServiceManagement
-import SwiftUI
 
 // Small colored dot indicator
 class DotView: NSView {
@@ -98,55 +97,109 @@ class StatusView: NSView {
     }
 }
 
-class StatusBarController: NSObject {
+class StatusBarController: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var statusView: StatusView!
     private var timer: Timer?
-    private var settingsWindowController: NSWindowController?
-    
+
+    // Live info rows in the dropdown (titles refreshed in menuNeedsUpdate).
+    private var availableItem: NSMenuItem!         // accurate/smaller: df real free
+    private var finderAvailableItem: NSMenuItem!   // Finder-consistent: importantUsage
+    private var launchItem: NSMenuItem!
+
     override init() {
         super.init()
-        
+
         // Initialize status item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
+
         // Setup Custom View
         statusView = StatusView()
-        
+
         if let button = statusItem.button {
             button.addSubview(statusView)
-            
+
             // Explicitly set the length of the status item to match our view
             // This prevents jitter and ensures the click area is correct.
             statusItem.length = statusView.frame.width
         }
-        
+
         setupMenu()
         startMonitoring()
     }
-    
+
     private func setupMenu() {
         let menu = NSMenu()
-        
-        let settingsItem = NSMenuItem(title: "Settings", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-        
+        menu.delegate = self
+        menu.autoenablesItems = false
+
+        // --- Two selectable free-space modes (radio; the chosen one drives the menu bar F:/U:):
+        //   "Available"        = df real free — smaller, accurate, always-stable (DEFAULT).
+        //   "Finder Available" = importantUsage — exactly what Finder / Settings → Storage show.
+        availableItem = NSMenuItem(title: "Available", action: #selector(selectDfMode), keyEquivalent: "")
+        availableItem.target = self
+        menu.addItem(availableItem)
+
+        finderAvailableItem = NSMenuItem(title: "Finder Available", action: #selector(selectFinderMode), keyEquivalent: "")
+        finderAvailableItem.target = self
+        menu.addItem(finderAvailableItem)
+
         menu.addItem(NSMenuItem.separator())
-        
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
+
+        // --- Launch at Login (checkable) ---
+        launchItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        launchItem.target = self
+        menu.addItem(launchItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: "Quit MyStats", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
-        
+
         statusItem.menu = menu
     }
-    
+
+    // Selected free-space mode. Default "real" = df real free (accurate). "finder" = importantUsage
+    // (exactly what Finder / Settings → Storage show). The chosen mode drives the menu bar F:/U:.
+    private var diskMode: String { UserDefaults.standard.string(forKey: "diskFreeMode") ?? "real" }
+
+    private func selectedAvailableBytes(_ disk: DiskUsage) -> Int64 {
+        diskMode == "finder" ? disk.freeIncludingPurgeable : disk.free
+    }
+    private func usedBytes(_ disk: DiskUsage) -> Int64 { disk.total - selectedAvailableBytes(disk) }
+
+    // MARK: NSMenuDelegate — refresh both readouts and the selection each time the dropdown opens.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if let disk = DiskMonitor.shared.getDiskUsage() {
+            availableItem.title = "Available:  " + formatDiskGB(Double(disk.free))
+            finderAvailableItem.title = "Finder Available:  " + formatDiskGB(Double(disk.freeIncludingPurgeable))
+        } else {
+            availableItem.title = "Available:  —"
+            finderAvailableItem.title = "Finder Available:  —"
+        }
+        let finder = (diskMode == "finder")
+        availableItem.state = finder ? .off : .on
+        finderAvailableItem.state = finder ? .on : .off
+        launchItem.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+    }
+
+    @objc private func selectDfMode() {
+        UserDefaults.standard.set("real", forKey: "diskFreeMode")
+        updateStatus()
+    }
+
+    @objc private func selectFinderMode() {
+        UserDefaults.standard.set("finder", forKey: "diskFreeMode")
+        updateStatus()
+    }
+
     private func startMonitoring() {
         updateStatus()
         timer = Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(updateStatus), userInfo: nil, repeats: true)
         RunLoop.main.add(timer!, forMode: .common)
     }
-    
+
     @objc private func updateStatus() {
         let netSpeed = NetworkMonitor.shared.checkSpeed()
         let diskUsage = DiskMonitor.shared.getDiskUsage()
@@ -155,10 +208,9 @@ class StatusBarController: NSObject {
         var dUsed = "U: —"
 
         if let disk = diskUsage {
-            let useFinderStyle = UserDefaults.standard.string(forKey: "diskFreeMode") == "finder"
-            let freeBytes = useFinderStyle ? disk.freeIncludingPurgeable : disk.free
-            dFree = "F: " + formatDiskGB(Double(freeBytes))
-            dUsed = "U: " + formatDiskGB(Double(disk.used))
+            // The selected mode drives both F: (available) and U: (used).
+            dFree = "F: " + formatDiskGB(Double(selectedAvailableBytes(disk)))
+            dUsed = "U: " + formatDiskGB(Double(usedBytes(disk)))
         }
 
         let nUp = formatNetSpeed(netSpeed.upload)
@@ -170,8 +222,8 @@ class StatusBarController: NSObject {
     }
 
     private func formatDiskGB(_ bytes: Double) -> String {
-        let gb = bytes / (1024.0 * 1024.0 * 1024.0)
-        return String(format: "%.2f GB", gb)
+        // Decimal GB (÷10⁹) to match Finder / Settings → Storage / About This Mac.
+        return String(format: "%.2f GB", bytes / 1_000_000_000)
     }
 
     private func formatNetSpeed(_ bytesPerSec: Double) -> String {
@@ -183,143 +235,20 @@ class StatusBarController: NSObject {
             return String(format: "%.1f MB/s", bytesPerSec / (1024.0 * 1024.0))
         }
     }
-    
-    @objc private func openSettings() {
-        if settingsWindowController == nil {
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 320, height: 280),
-                styleMask: [.titled, .closable, .miniaturizable],
-                backing: .buffered, defer: false)
-            window.center()
-            window.title = "Settings"
-            window.contentViewController = NSHostingController(rootView: SettingsView())
-            settingsWindowController = NSWindowController(window: window)
+
+    @objc private func toggleLaunchAtLogin() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSLog("MyStats: launch-at-login toggle failed: \(error.localizedDescription)")
         }
-        
-        settingsWindowController?.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
-    
+
     @objc private func quitApp() {
         NSApplication.shared.terminate(nil)
-    }
-}
-
-struct SettingsView: View {
-    @AppStorage("launchAtLogin") var launchAtLogin = false
-    @AppStorage("diskFreeMode") var diskFreeMode: String = "real"
-    @State private var statusMessage: String = ""
-    @State private var diskUsage: DiskUsage? = nil
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("MyStats Settings")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            Divider()
-
-            // --- Disk Free Space Mode ---
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Free Space Display")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    diskModeRow(
-                        mode: "real",
-                        label: "Real Free (df style)",
-                        subtitle: "Truly unoccupied blocks",
-                        value: diskUsage.map { formatGB(Double($0.free)) } ?? "—"
-                    )
-                    diskModeRow(
-                        mode: "finder",
-                        label: "Finder Style",
-                        subtitle: "Includes purgeable (local snapshots, caches)",
-                        value: diskUsage.map { formatGB(Double($0.freeIncludingPurgeable)) } ?? "—"
-                    )
-                }
-            }
-
-            Divider()
-
-            // --- Launch at Login ---
-            Toggle("Launch at Login", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { newValue in
-                    updateLoginItem(enabled: newValue)
-                }
-
-            if !statusMessage.isEmpty {
-                Text(statusMessage)
-                    .font(.caption2)
-                    .foregroundColor(.red)
-            }
-
-            Spacer()
-
-            Button("Close") {
-                NSApp.keyWindow?.close()
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-        }
-        .padding()
-        .frame(width: 320, height: 280)
-        .onAppear {
-            checkLoginItemStatus()
-            diskUsage = DiskMonitor.shared.getDiskUsage()
-        }
-        .onReceive(timer) { _ in
-            diskUsage = DiskMonitor.shared.getDiskUsage()
-        }
-    }
-
-    @ViewBuilder
-    private func diskModeRow(mode: String, label: String, subtitle: String, value: String) -> some View {
-        Button(action: { diskFreeMode = mode }) {
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: diskFreeMode == mode ? "largecircle.fill.circle" : "circle")
-                    .foregroundColor(diskFreeMode == mode ? .accentColor : .secondary)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(label)
-                        .font(.body)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                Text(value)
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(diskFreeMode == mode ? .primary : .secondary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func formatGB(_ bytes: Double) -> String {
-        String(format: "%.1f GB", bytes / (1024 * 1024 * 1024))
-    }
-
-    private func checkLoginItemStatus() {
-        launchAtLogin = SMAppService.mainApp.status == .enabled
-    }
-
-    private func updateLoginItem(enabled: Bool) {
-        do {
-            if enabled {
-                if SMAppService.mainApp.status == .enabled { return }
-                try SMAppService.mainApp.register()
-            } else {
-                if SMAppService.mainApp.status == .notRegistered { return }
-                try SMAppService.mainApp.unregister()
-            }
-            statusMessage = ""
-        } catch {
-            statusMessage = "Error: \(error.localizedDescription)"
-        }
     }
 }
