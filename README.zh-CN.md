@@ -1,5 +1,7 @@
 [English](README.md)
 
+<img src="assets/icon/AppIcon-display.png" width="112" alt="">
+
 # MyStats
 
 轻量级 macOS 原生菜单栏应用，实时监控磁盘与网络状态。
@@ -72,3 +74,6 @@ U: 300.11 GB  ● 128 KB/s
 - 通过 `getifaddrs`（BSD socket API）监控网络流量，排除回环接口
 - 使用 `SMAppService` 管理开机启动项
 - 每秒通过 `Timer` 刷新一次数据
+
+## 致谢
+- 应用图标符号来自 [lucide](https://lucide.dev) 的 `gauge` 图标，ISC 许可。

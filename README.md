@@ -1,5 +1,7 @@
 [中文](README.zh-CN.md)
 
+<img src="assets/icon/AppIcon-display.png" width="112" alt="">
+
 # MyStats
 
 A lightweight, native macOS menu bar application to monitor Disk and Network usage.
@@ -69,3 +71,6 @@ U: 300.11 GB  ● 128 KB/s
 - Uses `getifaddrs` for network monitoring (low-level BSD socket API), excluding loopback interfaces.
 - Uses `SMAppService` for modern login item management.
 - Updates every 1 second via a `Timer` on the main run loop.
+
+## Credits
+- App icon glyph: the `gauge` icon from [lucide](https://lucide.dev), ISC licence.

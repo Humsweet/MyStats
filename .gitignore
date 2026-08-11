@@ -4,3 +4,4 @@
 *.d
 *.swp
 MyStats.app
+__pycache__/

@@ -17,6 +17,7 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/"
+cp "assets/icon/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/"
 
 # Create Info.plist
 cat <<EOF > "$APP_BUNDLE/Contents/Info.plist"
@@ -28,6 +29,8 @@ cat <<EOF > "$APP_BUNDLE/Contents/Info.plist"
     <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>
     <string>com.hanyuyang.$APP_NAME</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleName</key>
     <string>$APP_NAME</string>
     <key>CFBundlePackageType</key>
@@ -43,5 +46,8 @@ cat <<EOF > "$APP_BUNDLE/Contents/Info.plist"
 </dict>
 </plist>
 EOF
+
+# Bump the bundle's mtime so Finder/Dock drop their cached icon for it.
+touch "$APP_BUNDLE"
 
 echo "Done. App is at $(pwd)/$APP_BUNDLE"
