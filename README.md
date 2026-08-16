@@ -6,6 +6,8 @@
 
 A lightweight, native macOS menu bar application to monitor Disk and Network usage.
 
+<img src="assets/screenshots/dropdown-menu.png" width="480" alt="MyStats status bar readout and dropdown menu">
+
 ## Features
 - **Disk Usage**: Shows free and used disk space in GB (two-row layout).
 - **Network Speed**: Shows real-time upload/download speeds, auto-scaling between B/s, KB/s, and MB/s.
@@ -62,9 +64,7 @@ U: 300.11 GB  ● 128 KB/s
 
 - Top row: Free disk space (F:) + upload speed (red dot indicator)
 - Bottom row: Used disk space (U:) + download speed (blue dot indicator)
-- Click the item to open the menu.
-- Select "Settings" to enable/disable Launch at Login.
-- Select "Quit" to exit.
+- Click the item to open the dropdown menu, which lets you switch the free-space mode ("Available" vs "Finder Available"), toggle "Launch at Login", or quit the app.
 
 ## Technical Details
 - Built with Swift 5.9, targeting macOS 13+.

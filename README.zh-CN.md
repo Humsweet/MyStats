@@ -6,6 +6,8 @@
 
 轻量级 macOS 原生菜单栏应用，实时监控磁盘与网络状态。
 
+<img src="assets/screenshots/dropdown-menu.png" width="480" alt="MyStats 状态栏读数与下拉菜单">
+
 ## 功能
 - **磁盘用量**：双行显示可用空间与已用空间（GB）
 - **网络速度**：实时上传/下载速度，自动切换 B/s、KB/s、MB/s 单位
@@ -65,9 +67,7 @@ U: 300.11 GB  ● 128 KB/s
 
 - 上行：可用磁盘空间 (F:) + 上传速度（红色圆点）
 - 下行：已用磁盘空间 (U:) + 下载速度（蓝色圆点）
-- 点击状态栏图标打开菜单
-- 选择 "Settings" 开启/关闭开机自启
-- 选择 "Quit" 退出
+- 点击状态栏图标打开下拉菜单，可切换可用空间的统计口径（"Available" / "Finder Available"）、开关"Launch at Login"（开机自启），或退出应用
 
 ## 技术细节
 - 使用 Swift 5.9 构建，目标平台 macOS 13+
