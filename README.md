@@ -12,6 +12,8 @@ A lightweight, native macOS menu bar application to monitor Disk and Network usa
 - **Disk Usage**: Shows free and used disk space in GB (two-row layout).
 - **Network Speed**: Shows real-time upload/download speeds, auto-scaling between B/s, KB/s, and MB/s.
 - **Minimalist**: Uses native Swift and AppKit for maximum performance and minimum footprint.
+- **External drives**: Free space and usage for every mounted external drive, in the dropdown.
+- **Slack alerts**: Configurable free-space thresholds per Mac and per drive, delivered as Slack DMs (config: `~/dotfiles/apps/mystats/config.json`).
 - **Settings**: Simple "Launch at Login" option.
 
 ## Requirements

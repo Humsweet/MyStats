@@ -27,20 +27,33 @@ The app is pure AppKit — no SwiftUI, no settings window. All interaction is th
 **Key files:**
 
 - `StatusBarController.swift` — owns the `NSStatusItem`, drives the 1-second `Timer` (`updateStatus`), and builds + maintains the dropdown `NSMenu`. It is the menu's `NSMenuDelegate`: `menuNeedsUpdate(_:)` refreshes the live disk readouts and the radio selection each time the menu opens. Also contains `StatusView`, the custom `NSView` drawn inside the status-bar button.
-- `DiskMonitor.swift` — reads disk stats via `URLResourceValues` (fresh `URL` each call, so no stale resource-value cache). Returns `free` (`volumeAvailableCapacityKey` — truly-unallocated blocks, like `df`; smaller, stable) and `freeIncludingPurgeable` (`volumeAvailableCapacityForImportantUsageKey` — exactly what Finder / Settings → Storage show; free + purgeable).
+- `DiskMonitor.swift` — reads disk stats via `URLResourceValues` (fresh `URL` each call, so no stale resource-value cache). Returns `free` (`volumeAvailableCapacityKey` — truly-unallocated blocks, like `df`; smaller, stable) and `freeIncludingPurgeable` (`volumeAvailableCapacityForImportantUsageKey` — exactly what Finder / Settings → Storage show; free + purgeable). `externalVolumes()` lists local, writable, non-internal volumes (read-only excludes mounted `.dmg`s), keyed by volume UUID.
+- `AlertConfig.swift` — the alert rule model and `AlertConfigStore`, which re-reads the config file whenever its mtime changes (checked every minute — no restart, no reload button). `DeviceInfo.modelName()` gets "Mac mini" / "MacBook Air" / "MacBook Pro" from `system_profiler` (once, off the main thread).
+- `DiskAlerts.swift` — per-disk threshold state machine; turns readings into Slack messages.
+- `SlackNotifier.swift` — persistent send queue to Slack via the DM Myself app's credentials.
 - `NetworkMonitor.swift` — reads per-interface byte counters via `getifaddrs`, skipping loopback. Computes upload/download speed as delta over elapsed time. First call always returns 0.
 
 **Status bar layout (StatusView):** Two rows × two columns. Left column: disk free `F:` (top) and disk used `U:` (bottom). Right column: upload speed (top) and download speed (bottom). Rows are separated by colored dots (red = up, blue = down). Disk values are decimal GB (÷10⁹), to match Finder/Storage.
+
+**Status bar alert marks:** `F:` turns red and bold while the internal disk is below an announced threshold; an orange dot appears top-left while any mounted external drive is (F: is the internal disk, so it stays normal for external alerts).
 
 **Dropdown menu (built in `setupMenu`, refreshed in `menuNeedsUpdate`):**
 - Two selectable, mutually-exclusive free-space modes (radio, checkmark on the active one). The chosen mode drives the status bar's `F:` (available) and `U:` (= total − available):
   - **`Available`** — `free` (df). The smaller, accurate, always-stable figure. **Default.**
   - **`Finder Available`** — `freeIncludingPurgeable` (importantUsage). Mirrors Finder/Storage exactly; if Finder is briefly wrong at boot (before its purgeable scan completes) this is wrong identically — consistency with Finder by design. See the memory note `disk-available-semantics` for why the deep "System Data" scan can't be triggered by a third-party app.
+- `External Drives` — one three-line row per mounted external volume (name + used %, a usage bar drawn as an attributed-title image attachment, then free / total and the next alert threshold). Attributed titles rather than custom views, so rows keep native highlight; clicking opens the volume in Finder. Red with a dot (`onStateImage`) while alerting. The header and its separator hide when no drive is mounted.
+- `Notifications ›` — next alert threshold per disk, `Send Test to Slack`, `Open Config…`, and a status line (detected device, config errors, Slack problems, pending count).
 - `Launch at Login` — checkable; toggling calls `SMAppService.mainApp` register/unregister; its checkmark reflects the live `SMAppService.mainApp.status`.
 - `Quit MyStats` (⌘Q).
 
+**Disk alerts:** config is `~/dotfiles/apps/mystats/config.json`, one file shared by all three Macs via dotfiles sync. `internal` is keyed by model name, `external` by volume UUID (`diskutil info <disk> | grep 'Volume UUID'`), so a drive's rule follows it to whichever Mac it is plugged into. Rule: alert when free space drops below `belowGB`, then every further `everyGB` (omitted → once). Checked every 60 s, on mount/unmount, and when the menu opens; uses df-style `free` regardless of the display mode. Each downward crossing sends one loud alert (deepest level only if several are crossed at once); climbing back `recoveryMarginGB` above an announced level sends one silent "recovered" note. Changing a disk's rule resets its state.
+
+**Slack:** reads `~/.config/dm-myself/credentials.json` (owned by `~/Github Personal/DM_Myself`). Loud = `bot_token` → `dm_channel` (pushes); silent = `user_token` → own self-DM with `as_user` (same as `dm_myself.py note`, never pushes). Messages are persisted before the first attempt; transient failures retry with capped exponential backoff (1 → 30 min); credential errors pause the queue until the credentials file changes or `Send Test to Slack` is clicked.
+
 **Persistence:** plain `UserDefaults` (no `@AppStorage`):
 - `diskFreeMode` — `"real"` (default → `Available`/df) or `"finder"` (→ `Finder Available`/importantUsage). Read via `?? "real"`, so an absent key means df.
+- `alertState` — per disk key (`"internal"` or volume UUID): the rule it was computed for and the deepest announced level. Per machine by nature (UserDefaults is local).
+- `slackQueue` — messages not yet confirmed by Slack.
 - Launch-at-login state is not stored by us — it's read live from `SMAppService.mainApp.status`.
 
 **Bundle identity:** `com.hanyuyang.MyStats` (set in `build_app.sh`). The SPM build itself produces a plain Mach-O binary; the `.app` bundle with `Info.plist` is only created by the shell script. Note: a raw `.build/...` binary run directly does **not** use the `com.hanyuyang.MyStats` UserDefaults domain (only the bundled `.app` does).
