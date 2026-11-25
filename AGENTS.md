@@ -26,14 +26,14 @@ The app is pure AppKit — no SwiftUI, no settings window. All interaction is th
 
 **Key files:**
 
-- `StatusBarController.swift` — owns the `NSStatusItem`, drives the 1-second `Timer` (`updateStatus`), and builds + maintains the dropdown `NSMenu`. It is the menu's `NSMenuDelegate`: `menuNeedsUpdate(_:)` refreshes the live disk readouts and the radio selection each time the menu opens. Also contains `StatusView`, the custom `NSView` drawn inside the status-bar button.
+- `StatusBarController.swift` — owns the `NSStatusItem`, drives the 1-second `Timer` (`updateStatus`), and builds + maintains the dropdown `NSMenu`. It is the menu's `NSMenuDelegate`: `menuNeedsUpdate(_:)` refreshes the live disk readouts and the radio selection each time the menu opens. Also contains `StatusContent`, which renders the readout into the one `NSImage` set on the status-bar button (redrawn only when a shown value changes; never add subviews to the button — AppKit's menu-bar mirroring then spins the main thread at 100% CPU).
 - `DiskMonitor.swift` — reads disk stats via `URLResourceValues` (fresh `URL` each call, so no stale resource-value cache). Returns `free` (`volumeAvailableCapacityKey` — truly-unallocated blocks, like `df`; smaller, stable) and `freeIncludingPurgeable` (`volumeAvailableCapacityForImportantUsageKey` — exactly what Finder / Settings → Storage show; free + purgeable). `externalVolumes()` lists local, writable, non-internal volumes (read-only excludes mounted `.dmg`s), keyed by volume UUID.
 - `AlertConfig.swift` — the alert rule model and `AlertConfigStore`, which re-reads the config file whenever its mtime changes (checked every minute — no restart, no reload button). `DeviceInfo.modelName()` gets "Mac mini" / "MacBook Air" / "MacBook Pro" from `system_profiler` (once, off the main thread).
 - `DiskAlerts.swift` — per-disk threshold state machine; turns readings into Slack messages.
 - `SlackNotifier.swift` — persistent send queue to Slack via the DM Myself app's credentials.
 - `NetworkMonitor.swift` — reads per-interface byte counters via `getifaddrs`, skipping loopback. Computes upload/download speed as delta over elapsed time. First call always returns 0.
 
-**Status bar layout (StatusView):** Two rows × two columns. Left column: disk free `F:` (top) and disk used `U:` (bottom). Right column: upload speed (top) and download speed (bottom). Rows are separated by colored dots (red = up, blue = down). Disk values are decimal GB (÷10⁹), to match Finder/Storage.
+**Status bar layout (StatusContent):** Two rows × two columns. Left column: disk free `F:` (top) and disk used `U:` (bottom). Right column: upload speed (top) and download speed (bottom). Rows are separated by colored dots (red = up, blue = down). Disk values are decimal GB (÷10⁹), to match Finder/Storage.
 
 **Status bar alert marks:** `F:` turns red and bold while the internal disk is below an announced threshold; an orange dot appears top-left while any mounted external drive is (F: is the internal disk, so it stays normal for external alerts).
 

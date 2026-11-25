@@ -1,120 +1,84 @@
 import AppKit
 import ServiceManagement
 
-// Small colored dot indicator
-class DotView: NSView {
-    init(color: NSColor) {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.backgroundColor = color.cgColor
+// What the status-bar item shows: "F: XX.XX GB ● XX KB/s" over "U: XX.XX GB ● XX KB/s".
+//
+// Rendered as one NSImage handed to the status item's button — never as subviews of the button.
+// AppKit mirrors every status item into the menu bar by snapshotting the button; with custom
+// subviews inside, taking that snapshot invalidated the button again, which scheduled the next
+// snapshot, and the main thread spun at 100% CPU (macOS 27.2, measured 2026-11-25: 770 of 950
+// samples inside -[NSStatusItem _updateReplicants]).
+struct StatusContent: Equatable {
+    var diskFree = "F: —"
+    var diskUsed = "U: —"
+    var netUp = ""
+    var netDown = ""
+    var internalAlert = false   // internal disk below an announced threshold → F: red and bold
+    var externalAlert = false   // some external drive is → orange badge (F: itself is the internal disk)
+
+    // Layout
+    private static let badgeGutter: CGFloat = 6   // room for the external-drive badge left of "F:"
+    private static let diskWidth: CGFloat = 68    // "F: 179.89 GB"
+    private static let dotSize: CGFloat = 4
+    private static let dotMargin: CGFloat = 4
+    private static let netWidth: CGFloat = 48     // "999 KB/s"
+    private static let rowHeight: CGFloat = 11
+    private static let textInset: CGFloat = 2
+    static let size = NSSize(width: badgeGutter + diskWidth + dotMargin + dotSize + dotMargin + netWidth,
+                             height: rowHeight * 2)
+
+    // The drawing handler runs at display time, so labelColor follows the menu bar's appearance.
+    func image() -> NSImage {
+        let content = self
+        return NSImage(size: Self.size, flipped: false) { _ in
+            content.draw()
+            return true
+        }
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    private func draw() {
+        let s = Self.self
+        let topY = s.rowHeight, bottomY: CGFloat = 0
+        let dotX = s.badgeGutter + s.diskWidth + s.dotMargin
+        let netX = dotX + s.dotSize + s.dotMargin
+
+        if externalAlert {
+            dot(NSColor(red: 0.95, green: 0.60, blue: 0.29, alpha: 1.0),
+                NSRect(x: 0, y: topY + (s.rowHeight - 5) / 2, width: 5, height: 5))
+        }
+        text(diskFree, x: s.badgeGutter, y: topY, width: s.diskWidth, align: .left,
+             color: internalAlert ? .systemRed : .labelColor, weight: internalAlert ? .bold : .regular)
+        text(diskUsed, x: s.badgeGutter, y: bottomY, width: s.diskWidth, align: .left)
+        dot(NSColor(red: 0.95, green: 0.30, blue: 0.35, alpha: 1.0),
+            NSRect(x: dotX, y: topY + (s.rowHeight - s.dotSize) / 2, width: s.dotSize, height: s.dotSize))
+        dot(NSColor(red: 0.25, green: 0.52, blue: 1.0, alpha: 1.0),
+            NSRect(x: dotX, y: bottomY + (s.rowHeight - s.dotSize) / 2, width: s.dotSize, height: s.dotSize))
+        text(netUp, x: netX, y: topY, width: s.netWidth, align: .right)
+        text(netDown, x: netX, y: bottomY, width: s.netWidth, align: .right)
     }
 
-    override func layout() {
-        super.layout()
-        layer?.cornerRadius = bounds.height / 2
-    }
-}
-
-// Custom View for Status Bar — "F: XX.XX GB ● XX KB/s" style
-class StatusView: NSView {
-    private let diskFreeLabel = NSTextField()
-    private let diskUsedLabel = NSTextField()
-
-    private let upDot = DotView(color: NSColor(red: 0.95, green: 0.30, blue: 0.35, alpha: 1.0))
-    private let downDot = DotView(color: NSColor(red: 0.25, green: 0.52, blue: 1.0, alpha: 1.0))
-
-    private let upValueLabel = NSTextField()
-    private let downValueLabel = NSTextField()
-
-    // Shown when an external drive is below an announced alert threshold.
-    private let externalBadge = DotView(color: NSColor(red: 0.95, green: 0.60, blue: 0.29, alpha: 1.0))
-
-    // Layout Constants
-    private let badgeGutter: CGFloat = 6         // room for the external-drive badge left of "F:"
-    private let diskWidth: CGFloat = 68          // "F: 179.89 GB"
-    private let dotSize: CGFloat = 4
-    private let dotMargin: CGFloat = 4           // space around dot
-    private let netWidth: CGFloat = 48           // "999 KB/s"
-
-    // Vertical Layout
-    private let topRowY: CGFloat = 11
-    private let bottomRowY: CGFloat = 0
-    private let rowHeight: CGFloat = 11
-
-    init() {
-        let totalWidth = badgeGutter + diskWidth + dotMargin + dotSize + dotMargin + netWidth
-        super.init(frame: NSRect(x: 0, y: 0, width: totalWidth, height: 22))
-
-        // --- External-drive alert badge (top-left, hidden until needed) ---
-        externalBadge.frame = NSRect(x: 0, y: topRowY + (rowHeight - 5) / 2, width: 5, height: 5)
-        externalBadge.isHidden = true
-        addSubview(externalBadge)
-
-        // --- Disk Section (Left) ---
-        setupLabel(diskFreeLabel,
-                   frame: NSRect(x: badgeGutter, y: topRowY, width: diskWidth, height: rowHeight),
-                   align: .left)
-
-        setupLabel(diskUsedLabel,
-                   frame: NSRect(x: badgeGutter, y: bottomRowY, width: diskWidth, height: rowHeight),
-                   align: .left)
-
-        // --- Colored Dots (separator + direction indicator) ---
-        let dotX = badgeGutter + diskWidth + dotMargin
-        upDot.frame = NSRect(x: dotX, y: topRowY + (rowHeight - dotSize) / 2, width: dotSize, height: dotSize)
-        addSubview(upDot)
-
-        downDot.frame = NSRect(x: dotX, y: bottomRowY + (rowHeight - dotSize) / 2, width: dotSize, height: dotSize)
-        addSubview(downDot)
-
-        // --- Network Section (Right) ---
-        let netX = dotX + dotSize + dotMargin
-        setupLabel(upValueLabel,
-                   frame: NSRect(x: netX, y: topRowY, width: netWidth, height: rowHeight),
-                   align: .right)
-
-        setupLabel(downValueLabel,
-                   frame: NSRect(x: netX, y: bottomRowY, width: netWidth, height: rowHeight),
-                   align: .right)
+    private func dot(_ color: NSColor, _ rect: NSRect) {
+        color.setFill()
+        NSBezierPath(ovalIn: rect).fill()
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    private func setupLabel(_ label: NSTextField, frame: NSRect, align: NSTextAlignment) {
-        label.frame = frame
-        label.isEditable = false
-        label.isSelectable = false
-        label.isBezeled = false
-        label.drawsBackground = false
-        label.alignment = align
-        label.font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
-        label.textColor = .labelColor
-        addSubview(label)
-    }
-
-    // internalAlert: the internal disk is below an announced threshold → F: turns red and bold.
-    // externalAlert: some mounted external drive is → orange badge (F: itself is the internal disk).
-    func update(diskFree: String, diskUsed: String, netUp: String, netDown: String,
-                internalAlert: Bool, externalAlert: Bool) {
-        diskFreeLabel.stringValue = diskFree
-        diskFreeLabel.textColor = internalAlert ? .systemRed : .labelColor
-        diskFreeLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: internalAlert ? .bold : .regular)
-        externalBadge.isHidden = !externalAlert
-        diskUsedLabel.stringValue = diskUsed
-        upValueLabel.stringValue = netUp
-        downValueLabel.stringValue = netDown
+    private func text(_ string: String, x: CGFloat, y: CGFloat, width: CGFloat, align: NSTextAlignment,
+                      color: NSColor = .labelColor, weight: NSFont.Weight = .regular) {
+        let para = NSMutableParagraphStyle()
+        para.alignment = align
+        para.lineBreakMode = .byClipping
+        let attributed = NSAttributedString(string: string, attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: weight),
+            .foregroundColor: color, .paragraphStyle: para])
+        let height = attributed.size().height
+        attributed.draw(in: NSRect(x: x + Self.textInset, y: y + (Self.rowHeight - height) / 2,
+                                   width: width - Self.textInset * 2, height: height))
     }
 }
 
 class StatusBarController: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem!
-    private var statusView: StatusView!
+    private var shown: StatusContent?              // what the button image currently shows
     private var timer: Timer?
     private var alertTimer: Timer?
 
@@ -141,16 +105,9 @@ class StatusBarController: NSObject, NSMenuDelegate {
         // Initialize status item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-        // Setup Custom View
-        statusView = StatusView()
-
-        if let button = statusItem.button {
-            button.addSubview(statusView)
-
-            // Explicitly set the length of the status item to match our view
-            // This prevents jitter and ensures the click area is correct.
-            statusItem.length = statusView.frame.width
-        }
+        // Fixed length: the readout never changes width, so neighbours don't jitter.
+        statusItem.length = StatusContent.size.width
+        statusItem.button?.imagePosition = .imageOnly
 
         setupMenu()
         startMonitoring()
@@ -426,9 +383,12 @@ class StatusBarController: NSObject, NSMenuDelegate {
         let internalAlert = internalStatus?.alerting == true
         let externalAlert = externalStatus.values.contains { $0.alerting }
 
-        DispatchQueue.main.async {
-            self.statusView.update(diskFree: dFree, diskUsed: dUsed, netUp: nUp, netDown: nDown,
-                                   internalAlert: internalAlert, externalAlert: externalAlert)
+        // Redraw only when a shown value changed.
+        let content = StatusContent(diskFree: dFree, diskUsed: dUsed, netUp: nUp, netDown: nDown,
+                                    internalAlert: internalAlert, externalAlert: externalAlert)
+        if content != shown {
+            shown = content
+            statusItem.button?.image = content.image()
         }
     }
 
